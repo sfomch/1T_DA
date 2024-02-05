@@ -1,0 +1,110 @@
+
+
+with t1 as (
+select
+	*,
+	count (response_code) over (partition by cell_package_sk) in_group
+from
+	final_sql.response
+where
+	response_code <> 2),
+t2 as (
+select
+	*,
+	start_date::timestamp as start_date_1
+from
+	final_sql.companing),
+t3 as (
+select
+	*,
+	"Date"::timestamp as date_1
+from
+	final_sql.sales),
+t4 as (
+select
+	com.campaning_sd,
+	com.description,
+	send.send_name,
+	send.cell_package_sk,
+	send.communication_sk,
+	send.subject,   
+	res.id_customer,
+	res.response_code,
+	sal.id_product,
+	pr.price,
+	res.in_group
+from
+	t2 com
+join final_sql.sendings send 
+on
+	com.campaning_sd = send.campaning_sd
+join t1 res 
+on
+	send.cell_package_sk = res.cell_package_sk
+join t3 sal
+on
+	res.id_customer = sal.id_customer
+	and ((com.campaning_sd = 'camp_3581'
+		and (sal.date_1 between com.start_date_1 and com.start_date_1 + interval '3 day'))
+		or (com.campaning_sd = 'camp_35367'
+			and (sal.date_1 between com.start_date_1 and com.start_date_1 + interval '3 day'))
+			or (com.campaning_sd = 'camp_3512'
+				and (sal.date_1 between com.start_date_1 and com.start_date_1 + interval '3 day')))
+join final_sql.price pr
+on
+	sal.id_product = pr.product_id 
+),
+t5 as (
+select 
+	cell_package_sk,
+	sum(price) as sale_amount,
+	count(distinct id_customer) as response,
+	avg(in_group) as group_size
+from
+	t4
+group by
+	cell_package_sk),
+t6 as (
+select 
+	fin_.campaning_sd,
+	fin_.send_name,
+	fin_.cell_package_sk,
+	fin_.communication_sk,
+	fin_.subject,   
+	temp_.sale_amount,
+	temp_.response,
+	temp_.group_size
+from
+	final_sql.sendings fin_
+join t5 temp_
+on
+	fin_.cell_package_sk = temp_.cell_package_sk),
+t7 as (
+select
+	*,
+	response / group_size as customer_share,
+	sale_amount / response as avg_check
+from
+	t6
+),
+t8 as (
+select
+	* ,
+	customer_share - lead(customer_share) over (
+	order by cell_package_sk) as response_rate
+from
+	t7),
+t9 as (
+select
+	*,
+	response_rate * group_size as attracted
+from
+	t8
+where
+	subject <> ''
+)
+select
+	*,
+	attracted * avg_check as add_sales
+from
+	t9
